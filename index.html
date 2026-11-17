@@ -126,8 +126,9 @@
     <header>
       <div>
         <h1>Календарь бронирования рекламы</h1>
-        <p class="subtitle">Актуальное расписание свободных дат</p>
+        <p class="subtitle">Актуальное расписание свободных дат и динамический расчёт стоимости</p>
       </div>
+      <div class="badge-readonly">Только просмотр • Бронирование через владельца</div>
     </header>
 
     <div id="loader">🔄 Синхронизация с таблицей...</div>
@@ -136,20 +137,19 @@
 
   <script>
     const SHEET_ID = '1ROu8j3h69SZb7XeuOALTAOwThWd4RRLhPurPTjdO4NY';
-    const GID = '2023575713'; // Указан точный лист с вашей витриной
+    const GID = '2023575713';
     const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${GID}`;
 
     const PRICES = [21000, 21000, 25000, 30000, 35000, 45000, 50000];
     const DAY_NAMES = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
     
-    // Динамический старт с понедельника текущей недели
+    // Динамический старт с текущей недели
     const today = new Date();
     const daysToMonday = today.getDay() === 0 ? 6 : today.getDay() - 1; 
     const startDate = new Date(today);
     startDate.setDate(today.getDate() - daysToMonday);
     startDate.setHours(0, 0, 0, 0);
-    
-    const totalWeeks = 9; // Показываем сетку на 9 недель (~2 месяца вперед)
+    const totalWeeks = 9; // Около 2 месяцев
 
     let busyDatesSet = new Set();
     const container = document.getElementById('calendarContainer');
@@ -179,7 +179,6 @@
         const csvText = await response.text();
         
         const lines = csvText.split('\n');
-        // Превращаем таблицу в 2D матрицу для удобного поиска
         const matrix = lines.map(line => line.split(',').map(c => c.replace(/^"|"$/g, '').trim()));
         
         const months = {
@@ -187,12 +186,11 @@
           'июн': 5, 'июл': 6, 'авг': 7, 'сен': 8, 'окт': 9, 'ноя': 10, 'дек': 11
         };
 
-        // Сканируем всю таблицу
         for (let r = 0; r < matrix.length; r++) {
           for (let c = 0; c < matrix[r].length; c++) {
             const cell = matrix[r][c].toLowerCase();
             if (cell.includes('занято')) {
-               // Если нашли слово "занято", ищем дату в той же колонке на 1-3 строки выше
+               // Ищем дату в той же колонке на несколько строк выше
                for (let lookBack = r - 1; lookBack >= Math.max(0, r - 3); lookBack--) {
                  const dateCell = matrix[lookBack][c];
                  
@@ -203,15 +201,14 @@
                     break;
                  }
                  
-                 // Поиск текстового формата "16 нояб" или "16 ноября"
+                 // Поиск текстового формата "16 нояб"
                  match = dateCell.match(/(\d{1,2})\s+([а-яА-Я]+)/);
                  if (match) {
                     const day = parseInt(match[1]);
                     const monthStr = match[2].toLowerCase().substring(0, 3);
                     if (months[monthStr] !== undefined) {
                        const month = months[monthStr];
-                       
-                       // Определяем год (если сейчас ноябрь, а в ячейке "янв", значит это следующий год)
+                       // Определяем год (если месяц январь/февраль, а сейчас ноябрь, то это следующий год)
                        let y = new Date().getFullYear();
                        if (new Date().getMonth() >= 9 && month <= 2) y++;
                        
@@ -258,6 +255,7 @@
         headerEl.className = 'week-header';
         headerEl.innerHTML = `
           <div class="week-title">Неделя ${w + 1}: ${formatDisplay(weekDates[0].date)} — ${formatDisplay(weekDates[6].date)}</div>
+          <div class="week-stats">Занято дней: ${busyCount} из 7 ${nextFreePrice ? `• Цена свободного дня: ${formatPrice(nextFreePrice)}` : '• Все дни заняты'}</div>
         `;
         weekEl.appendChild(headerEl);
 

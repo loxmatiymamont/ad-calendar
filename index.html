@@ -128,8 +128,7 @@
         <h1>Календарь бронирования рекламы</h1>
         <p class="subtitle">Актуальное расписание свободных дат и динамический расчёт стоимости</p>
       </div>
-      <div class="badge-readonly">Только просмотр • Бронирование через владельца</div>
-    </header>
+       </header>
 
     <div id="loader">🔄 Синхронизация с таблицей...</div>
     <div id="calendarContainer"></div>
@@ -141,8 +140,15 @@
 
     const PRICES = [21000, 21000, 25000, 30000, 35000, 45000, 50000];
     const DAY_NAMES = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-    const startDate = new Date(2026, 10, 16);
-    const totalWeeks = 11;
+    // Динамический расчёт понедельника текущей недели
+    const today = new Date();
+    const daysToMonday = today.getDay() === 0 ? 6 : today.getDay() - 1; // Корректировка для воскресенья
+    const startDate = new Date(today);
+    startDate.setDate(today.getDate() - daysToMonday);
+    startDate.setHours(0, 0, 0, 0);
+
+    // Текущая неделя + 8 недель вперед (около 2 месяцев)
+    const totalWeeks = 9;
 
     let busyDatesSet = new Set();
     const container = document.getElementById('calendarContainer');
@@ -221,7 +227,6 @@
         headerEl.className = 'week-header';
         headerEl.innerHTML = `
           <div class="week-title">Неделя ${w + 1}: ${formatDisplay(weekDates[0].date)} — ${formatDisplay(weekDates[6].date)}</div>
-          <div class="week-stats">Занято дней: ${busyCount} из 7 ${nextFreePrice ? `• Цена свободного дня: ${formatPrice(nextFreePrice)}` : '• Все дни заняты'}</div>
         `;
         weekEl.appendChild(headerEl);
 

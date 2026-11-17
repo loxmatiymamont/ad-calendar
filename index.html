@@ -136,9 +136,8 @@
   </div>
 
   <script>
-    const SHEET_ID = '1ROu8j3h69SZb7XeuOALTAOwThWd4RRLhPurPTjdO4NY';
-    // ОБНОВЛЕНО: добавлен параметр gid=2023575713 для правильного листа!
-    const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=2023575713`;
+    // СЮДА ВСТАВЬТЕ ССЫЛКУ, ПОЛУЧЕННУЮ В APPS SCRIPT:
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyG16uI_ncS1HQTA5bv1R6hFBTXwNqUohXyBKX4q7WKNpQej6bqt4lRI3bTZQiQWdfpRA/exec';
 
     const PRICES = [21000, 21000, 25000, 30000, 35000, 45000, 50000];
     const DAY_NAMES = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
@@ -168,20 +167,15 @@
 
     async function fetchBusyDates() {
       try {
-        const response = await fetch(CSV_URL);
+        const response = await fetch(SCRIPT_URL);
         if (!response.ok) throw new Error('Network response was not ok');
-        const csvText = await response.text();
         
-        // Более надёжный парсинг
-        const lines = csvText.split('\n');
+        // Получаем чистый JSON массив из Apps Script
+        const lines = await response.json();
         
         for (let i = 1; i < lines.length; i++) {
-          const row = lines[i].trim();
-          if (!row) continue;
+          const cols = lines[i];
           
-          const cols = row.split('","').map(c => c.replace(/^"|"$/g, ''));
-          
-          // Структура столбцов: [0] Неделя, [1] Дата (DD.MM.YYYY), [2] День недели, [3] Статус
           if (cols.length >= 4) {
             const dateStr = cols[1];
             const status = cols[3];
@@ -196,8 +190,8 @@
         }
         return true;
       } catch (error) {
-        console.error('Ошибка синхронизации с Google Таблицей:', error);
-        loader.innerHTML = '⚠️ Не удалось загрузить актуальные данные. Убедитесь, что доступ к таблице открыт по ссылке ("Читатель").';
+        console.error('Ошибка синхронизации с API:', error);
+        loader.innerHTML = '⚠️ Не удалось загрузить актуальные данные.';
         return false;
       }
     }

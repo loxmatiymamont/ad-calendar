@@ -126,29 +126,30 @@
     <header>
       <div>
         <h1>Календарь бронирования рекламы</h1>
-        <p class="subtitle">Актуальное расписание свободных дат и динамический расчёт стоимости</p>
+        <p class="subtitle">Актуальное расписание свободных дат</p>
       </div>
-       </header>
+    </header>
 
     <div id="loader">🔄 Синхронизация с таблицей...</div>
     <div id="calendarContainer"></div>
   </div>
 
   <script>
-    // СЮДА ВСТАВЬТЕ ССЫЛКУ, ПОЛУЧЕННУЮ В APPS SCRIPT:
-    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyG16uI_ncS1HQTA5bv1R6hFBTXwNqUohXyBKX4q7WKNpQej6bqt4lRI3bTZQiQWdfpRA/exec';
+    const SHEET_ID = '1ROu8j3h69SZb7XeuOALTAOwThWd4RRLhPurPTjdO4NY';
+    const GID = '2023575713'; // Указан точный лист с вашей витриной
+    const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${GID}`;
 
     const PRICES = [21000, 21000, 25000, 30000, 35000, 45000, 50000];
     const DAY_NAMES = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-    // Динамический расчёт понедельника текущей недели
+    
+    // Динамический старт с понедельника текущей недели
     const today = new Date();
-    const daysToMonday = today.getDay() === 0 ? 6 : today.getDay() - 1; // Корректировка для воскресенья
+    const daysToMonday = today.getDay() === 0 ? 6 : today.getDay() - 1; 
     const startDate = new Date(today);
     startDate.setDate(today.getDate() - daysToMonday);
     startDate.setHours(0, 0, 0, 0);
-
-    // Текущая неделя + 8 недель вперед (около 2 месяцев)
-    const totalWeeks = 9;
+    
+    const totalWeeks = 9; // Показываем сетку на 9 недель (~2 месяца вперед)
 
     let busyDatesSet = new Set();
     const container = document.getElementById('calendarContainer');
@@ -173,31 +174,61 @@
 
     async function fetchBusyDates() {
       try {
-        const response = await fetch(SCRIPT_URL);
+        const response = await fetch(CSV_URL);
         if (!response.ok) throw new Error('Network response was not ok');
+        const csvText = await response.text();
         
-        // Получаем чистый JSON массив из Apps Script
-        const lines = await response.json();
+        const lines = csvText.split('\n');
+        // Превращаем таблицу в 2D матрицу для удобного поиска
+        const matrix = lines.map(line => line.split(',').map(c => c.replace(/^"|"$/g, '').trim()));
         
-        for (let i = 1; i < lines.length; i++) {
-          const cols = lines[i];
-          
-          if (cols.length >= 4) {
-            const dateStr = cols[1];
-            const status = cols[3];
-            
-            if (status && status.includes('Занято')) {
-              const parts = dateStr.split('.');
-              if (parts.length === 3) {
-                busyDatesSet.add(`${parts[2]}-${parts[1]}-${parts[0]}`);
-              }
+        const months = {
+          'янв': 0, 'фев': 1, 'мар': 2, 'апр': 3, 'май': 4, 'мая': 4,
+          'июн': 5, 'июл': 6, 'авг': 7, 'сен': 8, 'окт': 9, 'ноя': 10, 'дек': 11
+        };
+
+        // Сканируем всю таблицу
+        for (let r = 0; r < matrix.length; r++) {
+          for (let c = 0; c < matrix[r].length; c++) {
+            const cell = matrix[r][c].toLowerCase();
+            if (cell.includes('занято')) {
+               // Если нашли слово "занято", ищем дату в той же колонке на 1-3 строки выше
+               for (let lookBack = r - 1; lookBack >= Math.max(0, r - 3); lookBack--) {
+                 const dateCell = matrix[lookBack][c];
+                 
+                 // Поиск формата DD.MM.YYYY
+                 let match = dateCell.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+                 if (match) {
+                    busyDatesSet.add(`${match[3]}-${match[2]}-${match[1]}`);
+                    break;
+                 }
+                 
+                 // Поиск текстового формата "16 нояб" или "16 ноября"
+                 match = dateCell.match(/(\d{1,2})\s+([а-яА-Я]+)/);
+                 if (match) {
+                    const day = parseInt(match[1]);
+                    const monthStr = match[2].toLowerCase().substring(0, 3);
+                    if (months[monthStr] !== undefined) {
+                       const month = months[monthStr];
+                       
+                       // Определяем год (если сейчас ноябрь, а в ячейке "янв", значит это следующий год)
+                       let y = new Date().getFullYear();
+                       if (new Date().getMonth() >= 9 && month <= 2) y++;
+                       
+                       const mStr = String(month + 1).padStart(2, '0');
+                       const dStr = String(day).padStart(2, '0');
+                       busyDatesSet.add(`${y}-${mStr}-${dStr}`);
+                    }
+                    break;
+                 }
+               }
             }
           }
         }
         return true;
       } catch (error) {
-        console.error('Ошибка синхронизации с API:', error);
-        loader.innerHTML = '⚠️ Не удалось загрузить актуальные данные.';
+        console.error('Ошибка синхронизации с Google Таблицей:', error);
+        loader.innerHTML = '⚠️ Не удалось загрузить актуальные данные. Проверьте права доступа к таблице.';
         return false;
       }
     }
@@ -227,6 +258,7 @@
         headerEl.className = 'week-header';
         headerEl.innerHTML = `
           <div class="week-title">Неделя ${w + 1}: ${formatDisplay(weekDates[0].date)} — ${formatDisplay(weekDates[6].date)}</div>
+          <div class="week-stats">Занято дней: ${busyCount} из 7 ${nextFreePrice ? `• Цена свободного дня: ${formatPrice(nextFreePrice)}` : '• Все дни заняты'}</div>
         `;
         weekEl.appendChild(headerEl);
 

@@ -137,7 +137,8 @@
 
   <script>
     const SHEET_ID = '1ROu8j3h69SZb7XeuOALTAOwThWd4RRLhPurPTjdO4NY';
-    const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`;
+    // ОБНОВЛЕНО: добавлен параметр gid=2023575713 для правильного листа!
+    const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=2023575713`;
 
     const PRICES = [21000, 21000, 25000, 30000, 35000, 45000, 50000];
     const DAY_NAMES = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
@@ -170,19 +171,22 @@
         const response = await fetch(CSV_URL);
         if (!response.ok) throw new Error('Network response was not ok');
         const csvText = await response.text();
+        
+        // Более надёжный парсинг
         const lines = csvText.split('\n');
-
+        
         for (let i = 1; i < lines.length; i++) {
           const row = lines[i].trim();
           if (!row) continue;
           
           const cols = row.split('","').map(c => c.replace(/^"|"$/g, ''));
           
+          // Структура столбцов: [0] Неделя, [1] Дата (DD.MM.YYYY), [2] День недели, [3] Статус
           if (cols.length >= 4) {
             const dateStr = cols[1];
             const status = cols[3];
             
-            if (status === 'Занято') {
+            if (status && status.includes('Занято')) {
               const parts = dateStr.split('.');
               if (parts.length === 3) {
                 busyDatesSet.add(`${parts[2]}-${parts[1]}-${parts[0]}`);

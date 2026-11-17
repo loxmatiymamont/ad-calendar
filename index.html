@@ -126,9 +126,8 @@
     <header>
       <div>
         <h1>Календарь бронирования рекламы</h1>
-        <p class="subtitle">Актуальное расписание свободных дат и динамический расчёт стоимости</p>
+        <p class="subtitle">Актуальное расписание свободных дат</p>
       </div>
-      <div class="badge-readonly">Только просмотр • Бронирование через владельца</div>
     </header>
 
     <div id="loader">🔄 Синхронизация с таблицей...</div>
@@ -298,7 +297,7 @@
         headerEl.className = 'week-header';
         headerEl.innerHTML = `
           <div class="week-title">Неделя ${w + 1}: ${formatDisplay(weekDates[0].date)} — ${formatDisplay(weekDates[6].date)}</div>
-          <div class="week-stats">Занято дней: ${busyCount} из 7 ${nextFreePrice ? `• Цена свободного дня: ${formatPrice(nextFreePrice)}` : '• Все дни заняты'}</div>
+          
         `;
         weekEl.appendChild(headerEl);
 

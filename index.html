@@ -126,8 +126,9 @@
     <header>
       <div>
         <h1>Календарь бронирования рекламы</h1>
-        <p class="subtitle">Актуальное расписание свободных дат</p>
+        <p class="subtitle">Актуальное расписание свободных дат и динамический расчёт стоимости</p>
       </div>
+      <div class="badge-readonly">Только просмотр • Бронирование через владельца</div>
     </header>
 
     <div id="loader">🔄 Синхронизация с таблицей...</div>
@@ -136,21 +137,20 @@
 
   <script>
     const SHEET_ID = '1ROu8j3h69SZb7XeuOALTAOwThWd4RRLhPurPTjdO4NY';
-    // Используем правильный ID листа
-    const GID = '2023575713'; 
+    const GID = '2023575713';
     const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${GID}`;
 
     const PRICES = [21000, 21000, 25000, 30000, 35000, 45000, 50000];
     const DAY_NAMES = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-    
+
     // Динамический старт с понедельника текущей недели
     const today = new Date();
-    const daysToMonday = today.getDay() === 0 ? 6 : today.getDay() - 1; 
+    const daysToMonday = today.getDay() === 0 ? 6 : today.getDay() - 1;
     const startDate = new Date(today);
     startDate.setDate(today.getDate() - daysToMonday);
     startDate.setHours(0, 0, 0, 0);
-    
-    const totalWeeks = 9; 
+
+    const totalWeeks = 9;
 
     let busyDatesSet = new Set();
     const container = document.getElementById('calendarContainer');
@@ -173,25 +173,34 @@
       return num.toLocaleString('ru-RU') + ' ₽';
     }
 
-    // Правильный парсер CSV: учитывает переносы строк внутри ячеек!
+    // Двусторонний расчёт года для дат без года (учитывает стык декабря и января в обе стороны)
+    function resolveYearForMonth(parsedMonth, refDate) {
+      const refYear = refDate.getFullYear();
+      const refMonth = refDate.getMonth();
+      if (refMonth >= 9 && parsedMonth <= 2) return refYear + 1;
+      if (refMonth <= 2 && parsedMonth >= 9) return refYear - 1;
+      return refYear;
+    }
+
+    // Парсер CSV с поддержкой переносов строк внутри ячеек
     function parseCSV(str) {
-        const arr = [];
-        let quote = false;
-        let row = 0, col = 0;
-        for (let c = 0; c < str.length; c++) {
-            let cc = str[c], nc = str[c+1];
-            arr[row] = arr[row] || [];
-            arr[row][col] = arr[row][col] || '';
-            
-            if (cc == '"' && quote && nc == '"') { arr[row][col] += cc; ++c; continue; }  
-            if (cc == '"') { quote = !quote; continue; }
-            if (cc == ',' && !quote) { ++col; continue; }
-            if (cc == '\r' && !quote) { continue; }
-            if (cc == '\n' && !quote) { ++row; col = 0; continue; }
-            
-            arr[row][col] += cc;
-        }
-        return arr;
+      const arr = [];
+      let quote = false;
+      let row = 0, col = 0;
+      for (let c = 0; c < str.length; c++) {
+        let cc = str[c], nc = str[c + 1];
+        arr[row] = arr[row] || [];
+        arr[row][col] = arr[row][col] || '';
+
+        if (cc == '"' && quote && nc == '"') { arr[row][col] += cc; ++c; continue; }
+        if (cc == '"') { quote = !quote; continue; }
+        if (cc == ',' && !quote) { ++col; continue; }
+        if (cc == '\r' && !quote) { continue; }
+        if (cc == '\n' && !quote) { ++row; col = 0; continue; }
+
+        arr[row][col] += cc;
+      }
+      return arr;
     }
 
     async function fetchBusyDates() {
@@ -199,10 +208,9 @@
         const response = await fetch(CSV_URL);
         if (!response.ok) throw new Error('Network response was not ok');
         const csvText = await response.text();
-        
-        // Используем умный парсинг вместо простого split '\n'
+
         const matrix = parseCSV(csvText);
-        
+
         const months = {
           'янв': 0, 'фев': 1, 'мар': 2, 'апр': 3, 'май': 4, 'мая': 4,
           'июн': 5, 'июл': 6, 'авг': 7, 'сен': 8, 'окт': 9, 'ноя': 10, 'дек': 11,
@@ -210,57 +218,51 @@
           'июля': 6, 'августа': 7, 'сентября': 8, 'октября': 9, 'ноября': 10, 'декабря': 11
         };
 
+        const now = new Date();
+
         for (let r = 0; r < matrix.length; r++) {
           for (let c = 0; c < matrix[r].length; c++) {
             const cell = matrix[r][c] ? matrix[r][c].toLowerCase() : '';
-            
+
             if (cell.includes('занято') || cell.includes('забронировано')) {
-               let foundDate = false;
-               
-               // Собираем текст из самой ячейки и из нескольких ячеек выше (на случай если всё склеено или в разных)
-               let textsToSearch = [cell];
-               
-               for (let lookBack = r - 1; lookBack >= Math.max(0, r - 5); lookBack--) {
-                   if (matrix[lookBack] && matrix[lookBack][c]) {
-                       textsToSearch.push(matrix[lookBack][c].toLowerCase());
-                   }
-               }
-               
-               for (let text of textsToSearch) {
-                 // Формат 1: DD.MM.YYYY
-                 let match = text.match(/(\d{2})\.(\d{2})\.(\d{4})/);
-                 if (match) {
-                    busyDatesSet.add(`${match[3]}-${match[2]}-${match[1]}`);
-                    foundDate = true;
+              let textsToSearch = [cell];
+
+              for (let lookBack = r - 1; lookBack >= Math.max(0, r - 5); lookBack--) {
+                if (matrix[lookBack] && matrix[lookBack][c]) {
+                  textsToSearch.push(matrix[lookBack][c].toLowerCase());
+                }
+              }
+
+              for (let text of textsToSearch) {
+                // Формат 1: DD.MM.YYYY
+                let match = text.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+                if (match) {
+                  busyDatesSet.add(`${match[3]}-${match[2]}-${match[1]}`);
+                  break;
+                }
+
+                // Формат 2: "28 декабря" / "2 января"
+                match = text.match(/(\d{1,2})\s+([а-я]+)/);
+                if (match) {
+                  const day = parseInt(match[1], 10);
+                  const monthStr = match[2];
+
+                  let month = -1;
+                  if (months[monthStr] !== undefined) {
+                    month = months[monthStr];
+                  } else if (months[monthStr.substring(0, 3)] !== undefined) {
+                    month = months[monthStr.substring(0, 3)];
+                  }
+
+                  if (month !== -1) {
+                    const y = resolveYearForMonth(month, now);
+                    const mStr = String(month + 1).padStart(2, '0');
+                    const dStr = String(day).padStart(2, '0');
+                    busyDatesSet.add(`${y}-${mStr}-${dStr}`);
                     break;
-                 }
-                 
-                 // Формат 2: "16 ноября"
-                 match = text.match(/(\d{1,2})\s+([а-я]+)/);
-                 if (match) {
-                    const day = parseInt(match[1]);
-                    const monthStr = match[2];
-                    
-                    let month = -1;
-                    if (months[monthStr] !== undefined) {
-                        month = months[monthStr];
-                    } else if (months[monthStr.substring(0, 3)] !== undefined) {
-                        month = months[monthStr.substring(0, 3)];
-                    }
-                    
-                    if (month !== -1) {
-                       let y = new Date().getFullYear();
-                       // Поправка на смену года (декабрь -> январь)
-                       if (new Date().getMonth() >= 9 && month <= 2) y++;
-                       
-                       const mStr = String(month + 1).padStart(2, '0');
-                       const dStr = String(day).padStart(2, '0');
-                       busyDatesSet.add(`${y}-${mStr}-${dStr}`);
-                       foundDate = true;
-                       break;
-                    }
-                 }
-               }
+                  }
+                }
+              }
             }
           }
         }
@@ -297,7 +299,7 @@
         headerEl.className = 'week-header';
         headerEl.innerHTML = `
           <div class="week-title">Неделя ${w + 1}: ${formatDisplay(weekDates[0].date)} — ${formatDisplay(weekDates[6].date)}</div>
-          
+          <div class="week-stats">Занято дней: ${busyCount} из 7 ${nextFreePrice ? `• Цена свободного дня: ${formatPrice(nextFreePrice)}` : '• Все дни заняты'}</div>
         `;
         weekEl.appendChild(headerEl);
 
